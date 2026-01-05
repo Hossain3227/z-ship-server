@@ -3,9 +3,11 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
+
 // Load environment variables from .env file
 dotenv.config();
 
+const stripe = require('stripe')(process.env.Payment_Gateway_Key);
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -86,6 +88,51 @@ async function run() {
                 res.status(500).send({ message: 'Failed to delete parcel' });
             }
         });
+
+        //get: get a specific parcel by id
+        app.get('/parcels/:id',async(req,res)=>{
+            try{
+                const id = req.params.id;
+                const parcel = await parcelCollection.findOne({_id: new ObjectId(id)});
+                if(!parcel){
+                    return  res.status(404).send({message: 'Parcel not found'});
+                }
+                res.send(parcel);
+            }
+            catch(error){
+                console.error('Error fetching parcel:', error);
+                res.status(500).send({message: 'Failed to get parcel'});
+            }
+        })
+
+        // payment related apis
+        app.post('/payment-checkout-session', async (req, res) => {
+            const paymentInfo = req.body;
+            const amount = parseInt(paymentInfo.cost) * 100;
+            const session = await stripe.checkout.sessions.create({
+                line_items: [
+                    {
+                        price_data: {
+                            currency: 'usd',
+                            unit_amount: amount,
+                            product_data: {
+                                name: `Please pay for: ${paymentInfo.parcelName}`
+                            }
+                        },
+                        quantity: 1,
+                    },
+                ],
+                mode: 'payment',
+                metadata: {
+                    parcelId: paymentInfo.parcelId
+                },
+                customer_email: paymentInfo.senderEmail,
+                success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+            })
+
+            res.send({ url: session.url })
+        })
 
 
         // Send a ping to confirm a successful connection
