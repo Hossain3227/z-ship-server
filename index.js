@@ -18,7 +18,7 @@ app.use(express.json());
 
 
 
-// const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.swu9d.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.42osioc.mongodb.net/?appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -37,6 +37,7 @@ async function run() {
 
         const db = client.db('parcelDB'); // database name
         const parcelCollection = db.collection('parcels'); // collection
+        const paymentCollection = db.collection('payments');
 
         app.get('/parcels', async (req, res) => {
             const parcels = await parcelCollection.find().toArray();
@@ -105,33 +106,19 @@ async function run() {
             }
         })
 
-        // payment related apis
-        app.post('/payment-checkout-session', async (req, res) => {
-            const paymentInfo = req.body;
-            const amount = parseInt(paymentInfo.cost) * 100;
-            const session = await stripe.checkout.sessions.create({
-                line_items: [
-                    {
-                        price_data: {
-                            currency: 'usd',
-                            unit_amount: amount,
-                            product_data: {
-                                name: `Please pay for: ${paymentInfo.parcelName}`
-                            }
-                        },
-                        quantity: 1,
-                    },
-                ],
-                mode: 'payment',
-                metadata: {
-                    parcelId: paymentInfo.parcelId
-                },
-                customer_email: paymentInfo.senderEmail,
-                success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-                cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
-            })
+        app.post('/create-payment-intent', async(req,res)=> {
+            try{
+                const paymentIntent = await stripe.paymentIntents.create({
+                    amount: 1000,
+                    currency: 'usd',
+                    payment_method_types: ['card'],
+                });
+                res.json({clientSecret: paymentIntent.client_secret});
+            }
+            catch(error){
+                res.status(500).send({error: error.message});
+            }
 
-            res.send({ url: session.url })
         })
 
 
